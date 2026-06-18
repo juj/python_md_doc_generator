@@ -51,6 +51,7 @@ class CompoundDef:
     name: str
     id: str = ""
     header_file: str = ""
+    brief: str = ""
     variables: list[MemberDef] = field(default_factory=list)
     functions: list[MemberDef] = field(default_factory=list)
 
@@ -241,7 +242,8 @@ def parse_xml_dir(xml_dir, ignore_exact=None, ignore_globs=None):
                     continue
                 includes = compounddef.find("includes")
                 header = includes.text if includes is not None and includes.text else ""
-                comp = CompoundDef(kind=kind, name=cname, id=cid, header_file=header)
+                comp = CompoundDef(kind=kind, name=cname, id=cid, header_file=header,
+                                   brief=extract_brief(compounddef))
 
                 for sdef in compounddef.findall("sectiondef"):
                     for mdef in sdef.findall("memberdef"):
@@ -328,7 +330,10 @@ def generate_markdown(headers, outpath):
                 lines.append("")
 
         for comp in hdr.compounds:
-            lines.append(f"**{comp.kind} {comp.name}**")
+            heading = f"**{comp.kind} {comp.name}**"
+            if comp.brief:
+                heading += f": {comp.brief}"
+            lines.append(heading)
             lines.append("")
             if comp.variables:
                 lines.append("Class members:")
@@ -647,9 +652,13 @@ def generate_html(headers, all_refids, outpath):
 
         for comp in hdr.compounds:
             comp_anchor = make_anchor(comp.name)
-            h.append(f'<h3 id="{html_module.escape(comp_anchor)}">'
-                     f'{_hl("kw", comp.kind)} '
-                     f'<span class="ty">{html_module.escape(comp.name)}</span></h3>')
+            comp_heading = (f'<h3 id="{html_module.escape(comp_anchor)}">'
+                            f'{_hl("kw", comp.kind)} '
+                            f'<span class="ty">{html_module.escape(comp.name)}</span>')
+            if comp.brief:
+                comp_heading += f' <span class="brief">— {html_module.escape(comp.brief)}</span>'
+            comp_heading += '</h3>'
+            h.append(comp_heading)
 
             if comp.variables:
                 h.append('<p class="sec">Members:</p><ul>')
