@@ -471,6 +471,8 @@ _CSS = """\
   --kw: #cf222e; --ty: #0550ae; --fn: #6639ba; --nu: #0a3069;
   --op: #6e7781; --pp: #8250df; --str: #0a3069; --brief: #656d76;
   --link: #0969da; --enum-val: #24292e;
+  --nav-bg: #f6f8fa; --nav-border: #d0d7de; --nav-heading: #cf222e;
+  --nav-active: #0969da; --nav-width: 200px;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -478,11 +480,29 @@ _CSS = """\
     --kw: #ff7b72; --ty: #79c0ff; --fn: #d2a8ff; --nu: #a5d6ff;
     --op: #8b949e; --pp: #d2a8ff; --str: #a5d6ff; --brief: #8b949e;
     --link: #58a6ff; --enum-val: #e6edf3;
+    --nav-bg: #161b22; --nav-border: #30363d; --nav-heading: #ff7b72;
+    --nav-active: #58a6ff;
   }
 }
-body { font-family: ui-monospace,SFMono-Regular,SF Mono,Menlo,Consolas,Liberation Mono,monospace;
-       font-size: 13px; line-height: 1.5; max-width: 960px; margin: 0 auto; padding: 20px;
-       color: var(--fg); background: var(--bg); }
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; height: 100%;
+  font-family: ui-monospace,SFMono-Regular,SF Mono,Menlo,Consolas,Liberation Mono,monospace;
+  font-size: 13px; line-height: 1.5; color: var(--fg); background: var(--bg); }
+.layout { display: flex; height: 100vh; }
+nav { width: var(--nav-width); min-width: var(--nav-width); height: 100vh;
+  overflow-y: auto; padding: 12px; border-right: 1px solid var(--nav-border);
+  background: var(--nav-bg); }
+nav h2 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;
+  color: var(--nav-heading); margin: 12px 0 4px 0; padding: 0; border: none; }
+nav h2:first-child { margin-top: 0; }
+nav ul { list-style: none; margin: 0; padding: 0; }
+nav li { margin: 1px 0; }
+nav a { display: block; padding: 1px 4px; border-radius: 3px; color: var(--fg);
+  text-decoration: none; font-size: 12px; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; }
+nav a:hover { background: var(--bg-code); color: var(--nav-active); }
+main { flex: 1; height: 100vh; overflow-y: auto; padding: 20px 32px;
+  max-width: 960px; }
 h1 { font-size: 1.4em; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
 h2 { font-size: 1.1em; margin-top: 2em; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
 h3 { font-size: 1em; margin: 1.2em 0 0.3em 0; }
@@ -511,6 +531,18 @@ h3 .ty { font-weight: 600; }"""
 
 
 def generate_html(headers, all_refids, outpath):
+    # Collect nav entries
+    nav_classes = []
+    nav_headers = []
+    for hdr in headers:
+        has_content = (hdr.compounds or hdr.free_functions or hdr.enums
+                       or hdr.typedefs or hdr.defines)
+        if not has_content:
+            continue
+        nav_headers.append((make_anchor(hdr.display_name), hdr.display_name))
+        for comp in hdr.compounds:
+            nav_classes.append((make_anchor(comp.name), comp.name))
+
     h = []
     h.append("<!DOCTYPE html>")
     h.append("<html><head>")
@@ -518,6 +550,25 @@ def generate_html(headers, all_refids, outpath):
     h.append("<title>API Documentation</title>")
     h.append(f"<style>\n{_CSS}\n</style>")
     h.append("</head><body>")
+    h.append('<div class="layout">')
+
+    # Sidebar
+    h.append("<nav>")
+    if nav_classes:
+        h.append("<h2>Classes</h2><ul>")
+        for anchor, name in sorted(nav_classes, key=lambda x: x[1].lower()):
+            h.append(f'<li><a href="#{html_module.escape(anchor)}">'
+                     f'{html_module.escape(name)}</a></li>')
+        h.append("</ul>")
+    if nav_headers:
+        h.append("<h2>Headers</h2><ul>")
+        for anchor, name in nav_headers:
+            h.append(f'<li><a href="#{html_module.escape(anchor)}">'
+                     f'{html_module.escape(name)}</a></li>')
+        h.append("</ul>")
+    h.append("</nav>")
+
+    h.append("<main>")
     h.append("<h1>API Documentation</h1>")
 
     for hdr in headers:
@@ -623,6 +674,8 @@ def generate_html(headers, all_refids, outpath):
                 h.append(line)
             h.append("</ul>")
 
+    h.append("</main>")
+    h.append("</div>")
     h.append("</body></html>")
 
     with open(outpath, "w", encoding="utf-8") as fout:
