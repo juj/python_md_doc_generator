@@ -533,9 +533,11 @@ html, body { margin: 0; padding: 0; height: 100%;
 nav { width: var(--nav-width); min-width: var(--nav-width); height: 100vh;
   overflow-y: auto; padding: 12px; border-right: 1px solid var(--nav-border);
   background: var(--nav-bg); }
+.sp-toggle { display: block; font-size: 12px; margin-bottom: 10px; padding: 4px 0;
+  border-bottom: 1px solid var(--nav-border); cursor: pointer; user-select: none; }
+.sp-toggle input { margin-right: 4px; vertical-align: middle; cursor: pointer; }
 nav h2 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;
   color: var(--nav-heading); margin: 12px 0 4px 0; padding: 0; border: none; }
-nav h2:first-child { margin-top: 0; }
 nav ul { list-style: none; margin: 0; padding: 0; }
 nav li { margin: 1px 0; }
 nav a { display: block; padding: 1px 4px; border-radius: 3px; color: var(--fg);
@@ -572,7 +574,7 @@ h3 .ty { font-weight: 600; }"""
 
 
 def generate_html(headers, all_refids, outpath):
-    # Collect nav entries
+    # Collect nav entries: classes track their parent header anchor
     nav_classes = []
     nav_headers = []
     for hdr in headers:
@@ -580,9 +582,10 @@ def generate_html(headers, all_refids, outpath):
                        or hdr.typedefs or hdr.defines)
         if not has_content:
             continue
-        nav_headers.append((make_anchor(hdr.display_name), hdr.display_name))
+        hdr_anchor = make_anchor(hdr.display_name)
+        nav_headers.append((hdr_anchor, hdr.display_name))
         for comp in hdr.compounds:
-            nav_classes.append((make_anchor(comp.name), comp.name))
+            nav_classes.append((make_anchor(comp.name), comp.name, hdr_anchor))
 
     h = []
     h.append("<!DOCTYPE html>")
@@ -595,16 +598,20 @@ def generate_html(headers, all_refids, outpath):
 
     # Sidebar
     h.append("<nav>")
+    h.append('<label class="sp-toggle">'
+             '<input type="checkbox" id="singlepage" checked> Single page</label>')
     if nav_classes:
         h.append("<h2>Classes</h2><ul>")
-        for anchor, name in sorted(nav_classes, key=lambda x: x[1].lower()):
-            h.append(f'<li><a href="#{html_module.escape(anchor)}">'
+        for anchor, name, hdr_anchor in sorted(nav_classes, key=lambda x: x[1].lower()):
+            h.append(f'<li><a href="#{html_module.escape(anchor)}"'
+                     f' data-section="{html_module.escape(hdr_anchor)}">'
                      f'{html_module.escape(name)}</a></li>')
         h.append("</ul>")
     if nav_headers:
         h.append("<h2>Headers</h2><ul>")
         for anchor, name in nav_headers:
-            h.append(f'<li><a href="#{html_module.escape(anchor)}">'
+            h.append(f'<li><a href="#{html_module.escape(anchor)}"'
+                     f' data-section="{html_module.escape(anchor)}">'
                      f'{html_module.escape(name)}</a></li>')
         h.append("</ul>")
     h.append("</nav>")
@@ -620,6 +627,7 @@ def generate_html(headers, all_refids, outpath):
 
         anchor = make_anchor(hdr.display_name)
         dn = html_module.escape(hdr.display_name)
+        h.append(f'<section class="doc-section" data-section="{html_module.escape(anchor)}">')
         h.append(f'<h2 id="{html_module.escape(anchor)}">'
                  f'<span class="pp">#include</span> '
                  f'<span class="str">"{dn}"</span></h2>')
@@ -719,8 +727,66 @@ def generate_html(headers, all_refids, outpath):
                 h.append(line)
             h.append("</ul>")
 
+        h.append("</section>")
+
     h.append("</main>")
     h.append("</div>")
+
+    # JavaScript for single-page toggle
+    h.append("""<script>
+(function() {
+  var cb = document.getElementById('singlepage');
+  var main = document.querySelector('main');
+  var sections = document.querySelectorAll('.doc-section');
+  var navLinks = document.querySelectorAll('nav a[data-section]');
+  var active = null;
+
+  function showAll() {
+    for (var i = 0; i < sections.length; i++) sections[i].style.display = '';
+  }
+
+  function showOnly(id) {
+    for (var i = 0; i < sections.length; i++)
+      sections[i].style.display = sections[i].dataset.section === id ? '' : 'none';
+  }
+
+  function onNav(e) {
+    if (cb.checked) return;
+    e.preventDefault();
+    var sec = this.dataset.section;
+    var hash = this.getAttribute('href').substring(1);
+    active = sec;
+    showOnly(sec);
+    history.replaceState(null, '', '#' + hash);
+    var target = document.getElementById(hash);
+    if (target) { main.scrollTop = 0; target.scrollIntoView({block: 'start'}); }
+  }
+
+  for (var i = 0; i < navLinks.length; i++)
+    navLinks[i].addEventListener('click', onNav);
+
+  cb.addEventListener('change', function() {
+    if (cb.checked) { showAll(); }
+    else if (active) showOnly(active);
+    else showOnly('');
+  });
+
+  if (location.hash) {
+    var h = location.hash.substring(1);
+    for (var i = 0; i < navLinks.length; i++) {
+      if (navLinks[i].getAttribute('href') === '#' + h) {
+        active = navLinks[i].dataset.section;
+        cb.checked = false;
+        showOnly(active);
+        var t = document.getElementById(h);
+        if (t) t.scrollIntoView({block: 'start'});
+        break;
+      }
+    }
+  }
+})();
+</script>""")
+
     h.append("</body></html>")
 
     with open(outpath, "w", encoding="utf-8") as fout:
