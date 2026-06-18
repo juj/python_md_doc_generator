@@ -104,6 +104,14 @@ def extract_brief(memberdef):
     return brief
 
 
+def _is_internal(el):
+    for tag in ("briefdescription", "detaileddescription"):
+        text = extract_text(el.find(tag))
+        if "Internal." in text:
+            return True
+    return False
+
+
 def parse_memberdef(mdef):
     kind = mdef.get("kind", "")
     name = _compact_templates(mdef.findtext("name", "").strip())
@@ -188,6 +196,8 @@ def parse_xml_dir(xml_dir, ignore_set=None):
 
                 for sdef in compounddef.findall("sectiondef"):
                     for mdef in sdef.findall("memberdef"):
+                        if _is_internal(mdef):
+                            continue
                         member = parse_memberdef(mdef)
                         if _member_ignored(member.name, ignore_set):
                             continue
@@ -205,12 +215,16 @@ def parse_xml_dir(xml_dir, ignore_set=None):
                 cname = compounddef.findtext("compoundname", "")
                 if ignore_set and cname in ignore_set:
                     continue
+                if _is_internal(compounddef):
+                    continue
                 includes = compounddef.find("includes")
                 header = includes.text if includes is not None and includes.text else ""
                 comp = CompoundDef(kind=kind, name=cname, id=cid, header_file=header)
 
                 for sdef in compounddef.findall("sectiondef"):
                     for mdef in sdef.findall("memberdef"):
+                        if _is_internal(mdef):
+                            continue
                         member = parse_memberdef(mdef)
                         if _member_ignored(member.name, ignore_set, cname):
                             continue
