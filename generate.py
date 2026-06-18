@@ -280,6 +280,13 @@ def parse_xml_dir(xml_dir, ignore_exact=None, ignore_globs=None):
     return headers, all_refids
 
 
+def _type_ends_with_ptr(parts):
+    for p in reversed(parts):
+        if p.text:
+            return p.text.rstrip().endswith('*') or p.text.rstrip().endswith('&')
+    return False
+
+
 def format_signature_md(member):
     ret = type_parts_to_text(member.type_parts)
     args = member.argsstring
@@ -287,7 +294,8 @@ def format_signature_md(member):
         args = args[:args.index("__attribute__")].strip()
     sig = ""
     if ret:
-        sig += ret + " "
+        sep = "" if _type_ends_with_ptr(member.type_parts) else " "
+        sig += ret + sep
     sig += member.name + args
     return sig
 
@@ -341,7 +349,11 @@ def generate_markdown(headers, outpath):
                     if not v.name:
                         continue
                     type_str = type_parts_to_text(v.type_parts)
-                    line = f"- `{type_str} {v.name}`" if type_str else f"- `{v.name}`"
+                    if type_str:
+                        sep = "" if _type_ends_with_ptr(v.type_parts) else " "
+                        line = f"- `{type_str}{sep}{v.name}`"
+                    else:
+                        line = f"- `{v.name}`"
                     if v.brief:
                         line += f": {v.brief}"
                     lines.append(line)
@@ -463,7 +475,7 @@ def _type_part_html(p, all_refids):
 
 
 def _is_template_punct(text):
-    return bool(text) and all(c in '<>*&, ' for c in text)
+    return bool(text) and all(c in '<>, ' for c in text)
 
 
 def type_parts_to_html(parts, all_refids):
@@ -496,7 +508,8 @@ def format_signature_html(member, all_refids):
     parts = []
     ret = type_parts_to_html(member.type_parts, all_refids)
     if ret:
-        parts.append(ret + " ")
+        sep = "" if _type_ends_with_ptr(member.type_parts) else " "
+        parts.append(ret + sep)
     parts.append(_hl("fn", member.name))
     parts.append(_highlight_argsstring(member.argsstring, all_refids))
     return "".join(parts)
@@ -674,7 +687,8 @@ def generate_html(headers, all_refids, outpath):
                     if not v.name:
                         continue
                     type_html = _member_type_html(v, all_refids)
-                    line = f"<li><code>{type_html} {html_module.escape(v.name)}</code>"
+                    sep = "" if _type_ends_with_ptr(v.type_parts) else " "
+                    line = f"<li><code>{type_html}{sep}{html_module.escape(v.name)}</code>"
                     if v.brief:
                         line += f' <span class="brief">— {html_module.escape(v.brief)}</span>'
                     line += "</li>"
