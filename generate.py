@@ -150,7 +150,18 @@ def type_parts_to_text(parts):
     return _compact_templates(" ".join(p.text for p in parts if p.text))
 
 
-def parse_xml_dir(xml_dir):
+def _member_ignored(name, ignore_set, compound_name=None):
+    if not ignore_set:
+        return False
+    bare = name.split('(')[0]
+    if bare in ignore_set:
+        return True
+    if compound_name and f"{compound_name}::{bare}" in ignore_set:
+        return True
+    return False
+
+
+def parse_xml_dir(xml_dir, ignore_set=None):
     file_compounds = {}  # id -> parsed file compounddef
     class_compounds = {}  # id -> parsed class/struct compounddef
 
@@ -176,9 +187,10 @@ def parse_xml_dir(xml_dir):
                     hdr.display_name = cname
 
                 for sdef in compounddef.findall("sectiondef"):
-                    sk = sdef.get("kind", "")
                     for mdef in sdef.findall("memberdef"):
                         member = parse_memberdef(mdef)
+                        if _member_ignored(member.name, ignore_set):
+                            continue
                         if member.kind == "function":
                             hdr.free_functions.append(member)
                         elif member.kind == "enum":
@@ -191,6 +203,8 @@ def parse_xml_dir(xml_dir):
 
             elif kind in ("class", "struct"):
                 cname = compounddef.findtext("compoundname", "")
+                if ignore_set and cname in ignore_set:
+                    continue
                 includes = compounddef.find("includes")
                 header = includes.text if includes is not None and includes.text else ""
                 comp = CompoundDef(kind=kind, name=cname, id=cid, header_file=header)
@@ -198,6 +212,8 @@ def parse_xml_dir(xml_dir):
                 for sdef in compounddef.findall("sectiondef"):
                     for mdef in sdef.findall("memberdef"):
                         member = parse_memberdef(mdef)
+                        if _member_ignored(member.name, ignore_set, cname):
+                            continue
                         if member.kind == "variable":
                             comp.variables.append(member)
                         elif member.kind == "function":
@@ -252,7 +268,10 @@ def generate_markdown(headers, outpath):
 
         for td in hdr.typedefs:
             type_str = type_parts_to_text(td.type_parts)
-            line = f"**typedef** `{type_str}` **{td.name}**"
+            sig = f"{type_str} {td.name}"
+            if td.argsstring:
+                sig += td.argsstring
+            line = f"**typedef** `{sig}`"
             if td.brief:
                 line += f": {td.brief}"
             lines.append(line)
@@ -515,8 +534,12 @@ def generate_html(headers, all_refids, outpath):
 
         for td in hdr.typedefs:
             type_html = _member_type_html(td, all_refids)
-            line = (f'<p>{_hl("kw", "typedef")} {type_html} '
-                    f'<span class="ty"><b>{html_module.escape(td.name)}</b></span>')
+            args_html = _highlight_argsstring(td.argsstring, all_refids) if td.argsstring else ""
+            type_str = type_parts_to_text(td.type_parts)
+            sep = "" if type_str.endswith("*") or type_str.endswith("(") else " "
+            line = (f'<p>{_hl("kw", "typedef")} {type_html}{sep}'
+                    f'<span class="ty"><b>{html_module.escape(td.name)}</b></span>'
+                    f'{args_html}')
             if td.brief:
                 line += f' <span class="brief">— {html_module.escape(td.brief)}</span>'
             line += "</p>"
@@ -612,6 +635,7 @@ def main():
     parser.add_argument("--xml", required=True, help="Path to Doxygen XML directory")
     parser.add_argument("--md", help="Output Markdown file")
     parser.add_argument("--html", help="Output HTML file")
+    parser.add_argument("--docignore", help="File listing symbols to hide from output")
     args = parser.parse_args()
 
     if not os.path.isdir(args.xml):
@@ -622,7 +646,15 @@ def main():
         print("Error: specify at least one of --md or --html", file=sys.stderr)
         sys.exit(1)
 
-    headers, all_refids = parse_xml_dir(args.xml)
+    ignore_set = set()
+    if args.docignore:
+        with open(args.docignore, encoding="utf-8") as f:
+            for line in f:
+                sym = line.strip()
+                if sym and not sym.startswith('#'):
+                    ignore_set.add(sym)
+
+    headers, all_refids = parse_xml_dir(args.xml, ignore_set)
 
     if args.md:
         generate_markdown(headers, args.md)
