@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import fnmatch
 import os
 import re
 import sys
@@ -158,18 +159,39 @@ def type_parts_to_text(parts):
     return _compact_templates(" ".join(p.text for p in parts if p.text))
 
 
-def _member_ignored(name, ignore_set, compound_name=None):
-    if not ignore_set:
+def _parse_ignore(ignore_set):
+    exact = set()
+    globs = []
+    for sym in ignore_set:
+        if any(c in sym for c in '*?['):
+            globs.append(sym)
+        else:
+            exact.add(sym)
+    return exact, globs
+
+
+def _name_matches_globs(name, globs):
+    return any(fnmatch.fnmatchcase(name, g) for g in globs)
+
+
+def _member_ignored(name, ignore_exact, ignore_globs, compound_name=None):
+    if not ignore_exact and not ignore_globs:
         return False
     bare = name.split('(')[0]
-    if bare in ignore_set:
+    if bare in ignore_exact:
         return True
-    if compound_name and f"{compound_name}::{bare}" in ignore_set:
+    if _name_matches_globs(bare, ignore_globs):
         return True
+    if compound_name:
+        qualified = f"{compound_name}::{bare}"
+        if qualified in ignore_exact:
+            return True
+        if _name_matches_globs(qualified, ignore_globs):
+            return True
     return False
 
 
-def parse_xml_dir(xml_dir, ignore_set=None):
+def parse_xml_dir(xml_dir, ignore_exact=None, ignore_globs=None):
     file_compounds = {}  # id -> parsed file compounddef
     class_compounds = {}  # id -> parsed class/struct compounddef
 
@@ -199,7 +221,7 @@ def parse_xml_dir(xml_dir, ignore_set=None):
                         if _is_internal(mdef):
                             continue
                         member = parse_memberdef(mdef)
-                        if _member_ignored(member.name, ignore_set):
+                        if _member_ignored(member.name, ignore_exact, ignore_globs):
                             continue
                         if member.kind == "function":
                             hdr.free_functions.append(member)
@@ -213,7 +235,7 @@ def parse_xml_dir(xml_dir, ignore_set=None):
 
             elif kind in ("class", "struct"):
                 cname = compounddef.findtext("compoundname", "")
-                if ignore_set and cname in ignore_set:
+                if cname in (ignore_exact or set()) or _name_matches_globs(cname, ignore_globs or []):
                     continue
                 if _is_internal(compounddef):
                     continue
@@ -226,7 +248,7 @@ def parse_xml_dir(xml_dir, ignore_set=None):
                         if _is_internal(mdef):
                             continue
                         member = parse_memberdef(mdef)
-                        if _member_ignored(member.name, ignore_set, cname):
+                        if _member_ignored(member.name, ignore_exact, ignore_globs, cname):
                             continue
                         if member.kind == "variable":
                             comp.variables.append(member)
@@ -713,15 +735,17 @@ def main():
         print("Error: specify at least one of --md or --html", file=sys.stderr)
         sys.exit(1)
 
-    ignore_set = set()
+    ignore_exact, ignore_globs = set(), []
     if args.docignore:
+        raw = set()
         with open(args.docignore, encoding="utf-8") as f:
             for line in f:
                 sym = line.strip()
                 if sym and not sym.startswith('#'):
-                    ignore_set.add(sym)
+                    raw.add(sym)
+        ignore_exact, ignore_globs = _parse_ignore(raw)
 
-    headers, all_refids = parse_xml_dir(args.xml, ignore_set)
+    headers, all_refids = parse_xml_dir(args.xml, ignore_exact, ignore_globs)
 
     if args.md:
         generate_markdown(headers, args.md)
