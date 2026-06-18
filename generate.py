@@ -295,7 +295,7 @@ def generate_markdown(headers, outpath):
             lines.append(f"**{comp.kind} {comp.name}**")
             lines.append("")
             if comp.variables:
-                lines.append("Members:")
+                lines.append("Class members:")
                 for v in comp.variables:
                     if not v.name:
                         continue
@@ -308,7 +308,7 @@ def generate_markdown(headers, outpath):
             instance_methods = [f for f in comp.functions if not f.static and f.name]
             static_methods = [f for f in comp.functions if f.static and f.name]
             if instance_methods:
-                lines.append("Methods:")
+                lines.append("Class methods:")
                 for f in instance_methods:
                     sig = format_signature_md(f)
                     line = f"- `{sig}`"
@@ -317,7 +317,7 @@ def generate_markdown(headers, outpath):
                     lines.append(line)
                 lines.append("")
             if static_methods:
-                lines.append("Static methods:")
+                lines.append("Class static methods:")
                 for f in static_methods:
                     sig = format_signature_md(f)
                     line = f"- `{sig}`"
@@ -652,7 +652,7 @@ def generate_html(headers, all_refids, outpath):
                 h.append("</ul>")
 
         if hdr.free_functions:
-            h.append('<p class="sec">Functions:</p><ul>')
+            h.append('<p class="sec">Global functions:</p><ul>')
             for f in hdr.free_functions:
                 sig = format_signature_html(f, all_refids)
                 line = f'<li><span class="sig">{sig}</span>'
